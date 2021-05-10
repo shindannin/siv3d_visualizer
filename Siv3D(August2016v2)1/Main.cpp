@@ -91,7 +91,7 @@ namespace s3d
 		size_t available() const
 		{
 			if (!m_connected)
-			{
+			{	
 				return 0;
 			}
 
@@ -161,6 +161,28 @@ enum ShapeType
 	ST_Font,
 };
 
+
+struct VisualizerParam
+{
+    float cy = 0.f;
+    float cx = 0.f;
+    float scale = 1.f;
+
+    void update()
+    {
+        // 中心座標の変更（前フレームからのカーソルの移動量）
+        if (Input::MouseR.pressed)
+        {
+            const Point delta = Mouse::Delta();
+            cx -= delta.x / scale;
+            cy -= delta.y / scale;
+        }
+
+        // スケールの変更
+        const int wheelY = Mouse::Wheel();
+        scale *= (float)pow(1.1, -wheelY);
+    }
+};
 
 
 struct DrawShape
@@ -297,10 +319,12 @@ public:
 		{
 			mRawLog += readStr;
 			const string done = "done\r\n";
-			const string endout = mRawLog.substr(SZ(mRawLog) - SZ(done));
+            const int mainlen = SZ(mRawLog) - SZ(done);
+			const string endout = mRawLog.substr(mainlen);
 
 			if (endout == done)
 			{
+                mRawLog = mRawLog.substr(0, mainlen);
 				vector <string> vs;
 				Split1(mRawLog, vs, '\n');
 
@@ -354,10 +378,11 @@ void Main()
 	Window::Resize(WINDOW_W, WINDOW_H);
 
 	SubProcess sp;
+    VisualizerParam vis;
 
 	const Font font(10);
 	GUI gui(GUIStyle::Default);
-	gui.add(L"run", GUIButton::Create(L"実行"));
+	gui.add(L"run", GUIButton::Create(L"Run"));
 	const float slider_max = 640;
 	gui.add(L"time", GUISlider::Create(0.0, slider_max, slider_max, 200));
 	gui.setCenter(Point(WINDOW_W-160, 25));
@@ -380,15 +405,16 @@ void Main()
 			font(L"Done!").draw(1100, 100);
 		}
 
-//		font(gui.slider(L"time").value).draw(1000, 100);
+        vis.update();
+
 
 		const vector <DrawShape>& shapes = sp.GetShapes();
 		if (SZ(shapes) >= 1)
 		{
-			const int maxDrawTimeTime = shapes.back().time * gui.slider(L"time").value / slider_max;
+			const int maxDrawTime = shapes.back().time * gui.slider(L"time").value / slider_max;
 			for (const DrawShape& sh : shapes)
 			{
-				if (sh.time <= maxDrawTimeTime)
+				if (sh.time <= maxDrawTime)
 				{
 					switch (sh.type)
 					{
@@ -397,7 +423,11 @@ void Main()
 						break;
 
 					case ST_Rect:
-						Rect(sh.x, sh.y, sh.w, sh.h).draw(sh.color);
+                    {
+                        const int lx = static_cast<int>((sh.x - vis.cx) * vis.scale + WINDOW_W / 2);
+                        const int by = static_cast<int>((sh.y - vis.cy) * vis.scale + WINDOW_H / 2);
+                        Rect(lx, by, static_cast<int>(max(1.0f, sh.w * vis.scale)), static_cast<int>(max(1.0f, sh.h * vis.scale))).draw(sh.color);
+                    }
 						break;
 
 					case ST_Circle:
@@ -416,39 +446,12 @@ void Main()
 
 			}
 
-		const int maxDrawTime = shapes.back().time * gui.slider(L"time").value / slider_max;
-		for (const DrawShape& sh : shapes)
-		{
-			if (sh.time <= maxDrawTime)
-			{
-				switch (sh.type)
-				{
-				case ST_Line:
-					Line(sh.x, sh.y, sh.x + sh.w, sh.y + sh.h).draw(5, sh.color);
-					break;
-
-				case ST_Rect:
-					Rect(sh.x, sh.y, sh.w, sh.h).draw(sh.color);
-					break;
-
-				case ST_Circle:
-					Circle(sh.x, sh.y, sh.w).draw(sh.color);
-					break;
-
-				case ST_Font:
-					font(Widen(sh.text)).draw(sh.x, sh.y, sh.color);
-					break;
-
-
-				default:
-					break;
-				}
-			}
-
 		}
 
-		}
+        // font(gui.slider(L"time").value).draw(1000, 100);
 
+        font(vis.scale).draw(1000, 100);
+        font(SZ(sp.GetShapes())).draw(1050, 100);
 
 		//========== 終了 ==========
 		if (Input::KeySpace.clicked)
